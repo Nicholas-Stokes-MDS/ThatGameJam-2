@@ -5,6 +5,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/PrimitiveComponent.h"
 #include "GameFramework/Character.h"
+#include "GameFramework/CharacterMovementComponent.h"
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
 
@@ -82,11 +83,11 @@ void ABounceCompanion::UseAbility_Implementation(AActor* User)
 	switch (GetCompanionState())
 	{
 	case ECompanionState::Held:
-		LaunchHolder(User);
+		DropUnderHolder(User);
 		break;
 
 	case ECompanionState::Idle:
-		StartPulse(); // Remote use: the player can be anywhere
+		StartPulse(User); // Remote use: the player can be anywhere
 		break;
 
 	case ECompanionState::Thrown:
@@ -95,27 +96,29 @@ void ABounceCompanion::UseAbility_Implementation(AActor* User)
 	}
 }
 
-void ABounceCompanion::LaunchHolder(AActor* User)
+void ABounceCompanion::DropUnderHolder(AActor* User)
 {
-	const double Now = GetWorld()->GetTimeSeconds();
-	if (Now - LastLaunchTime < LaunchCooldown)
-	{
-		return;
-	}
-
 	ACharacter* Character = Cast<ACharacter>(User ? User : GetHolder());
 	if (!Character)
 	{
 		return;
 	}
 
-	Character->LaunchCharacter(FVector(0.f, 0.f, LaunchStrength), bLaunchOverridesXY, /*bZOverride=*/true);
-	LastLaunchTime = Now;
+	// Only works while the player is standing on the ground
+	UCharacterMovementComponent* Move = Character->GetCharacterMovement();
+	if (!Move || !Move->IsMovingOnGround())
+	{
+		return;
+	}
 
-	OnLaunchedHolder(Character);
+	const FVector Feet = Character->GetActorLocation() - FVector(0.f, 0.f, Character->GetSimpleCollisionHalfHeight());
+	Drop(Feet + FVector(0.f, 0.f, BaseRadius + 1.f));
+
+	// explode after dropping
+	StartPulse(User);
 }
 
-void ABounceCompanion::StartPulse()
+void ABounceCompanion::StartPulse(AActor* User)
 {
 	const double Now = GetWorld()->GetTimeSeconds();
 	if (Now - LastPulseTime < PulseCooldown)
@@ -127,6 +130,31 @@ void ABounceCompanion::StartPulse()
 	PulseTimeRemaining = PulseDuration;
 
 	OnPulseStarted();
+
+	// If the player is close enough, launch them away from the companion
+	ACharacter* Character = Cast<ACharacter>(User);
+	if (!Character)
+	{
+		return;
+	}
+
+	const FVector Offset = Character->GetActorLocation() - GetActorLocation();
+	const float Dist = Offset.Size();
+	if (Dist > PlayerLaunchRange)
+	{
+		return;
+	}
+
+	// Directly above the companion launches straight up; off to the side launches up and away
+	FVector Dir = Dist > KINDA_SMALL_NUMBER ? Offset / Dist : FVector::UpVector;
+	Dir.Z = FMath::Max(Dir.Z, MinLaunchUpComponent);
+	Dir = Dir.GetSafeNormal();
+
+	const float Alpha = FMath::GetMappedRangeValueClamped(
+		FVector2D(0.f, PlayerLaunchRange), FVector2D(1.f, LaunchFalloffAtMaxRange), Dist);
+
+	Character->LaunchCharacter(Dir * LaunchStrength * Alpha, bLaunchOverridesXY, /*bZOverride=*/true);
+	OnLaunchedPlayer(Character);
 }
 
 void ABounceCompanion::UpdateCrawl(float DeltaSeconds)

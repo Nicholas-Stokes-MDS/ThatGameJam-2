@@ -44,6 +44,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Companion")
 	void Throw(FVector Velocity);
 
+	/** Detach from the holder and place at a world location, standing on its own (Idle). */
+	UFUNCTION(BlueprintCallable, Category = "Companion")
+	void Drop(FVector WorldLocation);
+
 	/** Triggered by right click when not held. Override in children (C++ or Blueprint). */
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Companion")
 	void UseAbility(AActor* User);

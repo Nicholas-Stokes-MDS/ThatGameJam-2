@@ -139,6 +139,7 @@ void UCompanionCarryComponent::TryPickUp()
 		if (Companion->IsHeld())
 		{
 			HeldCompanion = Companion;
+			Companion->OnCompanionStateChanged.AddUniqueDynamic(this, &UCompanionCarryComponent::HandleCompanionStateChanged);
 		}
 	}
 }
@@ -160,6 +161,14 @@ void UCompanionCarryComponent::ThrowHeld()
 
 	HeldCompanion->Throw(Velocity);
 	HeldCompanion = nullptr;
+}
+
+void UCompanionCarryComponent::HandleCompanionStateChanged(ECompanionState OldState, ECompanionState NewState)
+{
+	if (HeldCompanion && !HeldCompanion->IsHeld())
+	{
+		HeldCompanion = nullptr;
+	}
 }
 
 ACompanionPawn* UCompanionCarryComponent::FindCompanionToGrab() const

@@ -1,7 +1,11 @@
 // CrawlerCompanion.h
 // Grounded companion. Crawls near the player's feet.
-//  - In hand:     UseAbility launches the player upward.
-//  - Not in hand: expands and shoves nearby pawns away (enemies off ledges, etc.)
+//  - UseAbility while held (player grounded): drops the companion at the player's feet.
+//  - UseAbility while not held: expands for a moment and shoves nearby pawns away
+//                               (works like a remote control, the player can be anywhere).
+//                               If the player is close enough they are launched away from
+//                               the companion (drop it under your feet, trigger it, bounce).
+// It never expands on its own, only when the ability is triggered.
 
 #pragma once
 
@@ -24,9 +28,9 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Crawler")
 	bool IsPulsing() const { return PulseTimeRemaining > 0.f; }
 
-	/** Hook for VFX/SFX/animation when the player gets launched (held ability). */
+	/** Hook for VFX/SFX/animation when the pulse launches the player. */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Crawler")
-	void OnLaunchedHolder(AActor* LaunchedActor);
+	void OnLaunchedPlayer(AActor* LaunchedActor);
 
 	/** Hook for VFX/SFX/animation when the expand-and-push pulse starts (remote ability). */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Crawler")
@@ -37,8 +41,8 @@ protected:
 	virtual void ApplyIdleCollision() override;
 	virtual void OnStateChanged(ECompanionState OldState, ECompanionState NewState) override;
 
-	void LaunchHolder(AActor* User);
-	void StartPulse();
+	void DropUnderHolder(AActor* User);
+	void StartPulse(AActor* User);
 
 	void UpdateCrawl(float DeltaSeconds);
 	void SnapToFloor(float DeltaSeconds);
@@ -76,18 +80,27 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Movement")
 	float GravityZ = -980.f;
 
-	// ---- Launch ability (while held) ----
+	// ---- Player launch (pulse triggered while the player is close) ----
 
-	/** Upward launch velocity applied to the player (cm/s). */
+	/** Launch speed (cm/s) at point blank, applied away from the companion. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Launch")
 	float LaunchStrength = 1200.f;
 
+	/** The player is launched only if their center is within this distance of the companion. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Launch")
-	float LaunchCooldown = 0.6f;
+	float PlayerLaunchRange = 250.f;
 
-	/** If true the launch replaces the player's horizontal velocity, otherwise it keeps it. */
+	/** Launch strength multiplier at the edge of PlayerLaunchRange (1 = no falloff). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Launch")
-	bool bLaunchOverridesXY = false;
+	float LaunchFalloffAtMaxRange = 0.5f;
+
+	/** The launch direction always has at least this much upward component (0 to 1), so side hits still pop the player up. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Launch")
+	float MinLaunchUpComponent = 0.3f;
+
+	/** If true the launch replaces the player's current velocity, otherwise it is added to it. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Launch")
+	bool bLaunchOverridesXY = true;
 
 	// ---- Expand and push pulse (ability while not held) ----
 
@@ -128,6 +141,5 @@ private:
 	float CurrentScale = 1.f;
 	float FallVelocity = 0.f;
 	float PulseTimeRemaining = 0.f;
-	double LastLaunchTime = -1000.0;
 	double LastPulseTime = -1000.0;
 };

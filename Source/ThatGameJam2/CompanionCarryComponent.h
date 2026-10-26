@@ -9,6 +9,7 @@
 
 #include "CoreMinimal.h"
 #include "Components/ActorComponent.h"
+#include "CompanionPawn.h"
 #include "CompanionCarryComponent.generated.h"
 
 class ACompanionPawn;
@@ -69,6 +70,10 @@ protected:
 	virtual void BeginPlay() override;
 
 	ACompanionPawn* FindCompanionToGrab() const;
+
+	/** Clears HeldCompanion when the companion leaves the hand by itself (e.g. dropped by its ability). */
+	UFUNCTION()
+	void HandleCompanionStateChanged(ECompanionState OldState, ECompanionState NewState);
 
 protected:
 	/** Slots, in key order (1 = index 0). Can hold companions already placed in the level. */

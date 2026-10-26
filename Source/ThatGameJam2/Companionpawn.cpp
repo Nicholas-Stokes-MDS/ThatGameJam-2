@@ -91,6 +91,25 @@ void ACompanionPawn::Throw(FVector Velocity)
 	GetWorldTimerManager().SetTimer(PawnCollisionTimer, this, &ACompanionPawn::RestorePawnCollision, ThrowIgnorePawnTime, false);
 }
 
+void ACompanionPawn::Drop(FVector WorldLocation)
+{
+	if (State != ECompanionState::Held)
+	{
+		return;
+	}
+
+	DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
+	Holder = nullptr;
+	Collision->SetSimulatePhysics(false);
+
+	FRotator Upright = GetActorRotation();
+	Upright.Pitch = 0.f;
+	Upright.Roll = 0.f;
+	SetActorLocationAndRotation(WorldLocation, Upright, false, nullptr, ETeleportType::TeleportPhysics);
+
+	SetState(ECompanionState::Idle);
+}
+
 void ACompanionPawn::UseAbility_Implementation(AActor* User)
 {
 	// Intentionally empty. Children define what the ability does.
