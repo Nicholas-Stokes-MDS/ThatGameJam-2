@@ -21,13 +21,24 @@ public:
 
 	virtual void UseAbility_Implementation(AActor* User) override;
 
-	/** Hook for VFX/SFX/animation when the player gets launched. */
+	UFUNCTION(BlueprintPure, Category = "Crawler")
+	bool IsPulsing() const { return PulseTimeRemaining > 0.f; }
+
+	/** Hook for VFX/SFX/animation when the player gets launched (held ability). */
 	UFUNCTION(BlueprintImplementableEvent, Category = "Crawler")
 	void OnLaunchedHolder(AActor* LaunchedActor);
+
+	/** Hook for VFX/SFX/animation when the expand-and-push pulse starts (remote ability). */
+	UFUNCTION(BlueprintImplementableEvent, Category = "Crawler")
+	void OnPulseStarted();
 
 protected:
 	virtual void BeginPlay() override;
 	virtual void ApplyIdleCollision() override;
+	virtual void OnStateChanged(ECompanionState OldState, ECompanionState NewState) override;
+
+	void LaunchHolder(AActor* User);
+	void StartPulse();
 
 	void UpdateCrawl(float DeltaSeconds);
 	void SnapToFloor(float DeltaSeconds);
@@ -78,30 +89,45 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Launch")
 	bool bLaunchOverridesXY = false;
 
-	// ---- Expand and push (while not held) ----
+	// ---- Expand and push pulse (ability while not held) ----
 
-	/** Visual (and collision) scale multiplier when out of the player's hand. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Push")
+	/** Scale multiplier at full expansion (visual and collision). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Pulse")
 	float ExpandedScale = 3.f;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Push")
-	float ExpandInterpSpeed = 6.f;
+	/** How fast it grows when triggered. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Pulse")
+	float ExpandInterpSpeed = 12.f;
+
+	/** How fast it shrinks back once the pulse is over. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Pulse")
+	float ContractInterpSpeed = 5.f;
+
+	/** How long (seconds) it stays expanded and pushing. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Pulse")
+	float PulseDuration = 0.6f;
+
+	/** Minimum time between pulses, measured from the moment of triggering. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Pulse")
+	float PulseCooldown = 1.5f;
 
 	/** Extra reach beyond the expanded body for pushing. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Push")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Pulse")
 	float PushRadiusPadding = 40.f;
 
 	/** Speed (cm/s) at which overlapping pawns are shoved away, at the point of strongest push. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Push")
-	float PushSpeed = 450.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Pulse")
+	float PushSpeed = 800.f;
 
 	/** Multiplier turning PushSpeed into an acceleration for physics-simulating pawns. */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Push")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Crawler|Pulse")
 	float PhysicsPushAccelScale = 10.f;
 
 private:
 	float BaseRadius = 25.f;
 	float CurrentScale = 1.f;
 	float FallVelocity = 0.f;
+	float PulseTimeRemaining = 0.f;
 	double LastLaunchTime = -1000.0;
+	double LastPulseTime = -1000.0;
 };

@@ -18,7 +18,7 @@ void ABounceCompanion::BeginPlay()
 	Super::BeginPlay();
 
 	BaseRadius = Collision->GetUnscaledSphereRadius();
-	CurrentScale = IsHeld() ? 1.f : ExpandedScale;
+	CurrentScale = 1.f; // Never starts expanded; only a pulse expands it
 }
 
 void ABounceCompanion::ApplyIdleCollision()
@@ -30,13 +30,26 @@ void ABounceCompanion::ApplyIdleCollision()
 	Collision->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block);
 }
 
+void ABounceCompanion::OnStateChanged(ECompanionState OldState, ECompanionState NewState)
+{
+	// Picked up or thrown mid-pulse: cancel it
+	if (NewState != ECompanionState::Idle)
+	{
+		PulseTimeRemaining = 0.f;
+	}
+}
+
 void ABounceCompanion::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
 
-	// Shrink to hand size when held, grow when free.
-	const float TargetScale = IsHeld() ? 1.f : ExpandedScale;
-	CurrentScale = FMath::FInterpTo(CurrentScale, TargetScale, DeltaSeconds, ExpandInterpSpeed);
+	PulseTimeRemaining = FMath::Max(0.f, PulseTimeRemaining - DeltaSeconds);
+	const bool bPulsing = PulseTimeRemaining > 0.f;
+
+	// Expanded only during a pulse, otherwise normal size
+	const float TargetScale = bPulsing ? ExpandedScale : 1.f;
+	const float InterpSpeed = bPulsing ? ExpandInterpSpeed : ContractInterpSpeed;
+	CurrentScale = FMath::FInterpTo(CurrentScale, TargetScale, DeltaSeconds, InterpSpeed);
 	Mesh->SetRelativeScale3D(FVector(CurrentScale));
 
 	switch (GetCompanionState())
@@ -44,7 +57,10 @@ void ABounceCompanion::Tick(float DeltaSeconds)
 	case ECompanionState::Idle:
 		Collision->SetSphereRadius(BaseRadius * CurrentScale);
 		UpdateCrawl(DeltaSeconds);
-		ApplyPush(DeltaSeconds);
+		if (bPulsing)
+		{
+			ApplyPush(DeltaSeconds);
+		}
 		break;
 
 	case ECompanionState::Held:
@@ -56,7 +72,6 @@ void ABounceCompanion::Tick(float DeltaSeconds)
 		break;
 
 	case ECompanionState::Thrown:
-		// Physics is in charge. The mesh still expands visually.
 		FallVelocity = 0.f;
 		break;
 	}
@@ -64,11 +79,24 @@ void ABounceCompanion::Tick(float DeltaSeconds)
 
 void ABounceCompanion::UseAbility_Implementation(AActor* User)
 {
-	if (!IsHeld())
+	switch (GetCompanionState())
 	{
-		return; // The ability only works while in the player's hand
-	}
+	case ECompanionState::Held:
+		LaunchHolder(User);
+		break;
 
+	case ECompanionState::Idle:
+		StartPulse(); // Remote use: the player can be anywhere
+		break;
+
+	case ECompanionState::Thrown:
+	default:
+		break; // Nothing while in mid-air
+	}
+}
+
+void ABounceCompanion::LaunchHolder(AActor* User)
+{
 	const double Now = GetWorld()->GetTimeSeconds();
 	if (Now - LastLaunchTime < LaunchCooldown)
 	{
@@ -85,6 +113,20 @@ void ABounceCompanion::UseAbility_Implementation(AActor* User)
 	LastLaunchTime = Now;
 
 	OnLaunchedHolder(Character);
+}
+
+void ABounceCompanion::StartPulse()
+{
+	const double Now = GetWorld()->GetTimeSeconds();
+	if (Now - LastPulseTime < PulseCooldown)
+	{
+		return;
+	}
+
+	LastPulseTime = Now;
+	PulseTimeRemaining = PulseDuration;
+
+	OnPulseStarted();
 }
 
 void ABounceCompanion::UpdateCrawl(float DeltaSeconds)

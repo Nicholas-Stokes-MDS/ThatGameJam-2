@@ -44,7 +44,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Companion")
 	void Throw(FVector Velocity);
 
-	/** Triggered by right click. Override in children (C++ or Blueprint). */
+	/** Triggered by right click when not held. Override in children (C++ or Blueprint). */
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Companion")
 	void UseAbility(AActor* User);
 	virtual void UseAbility_Implementation(AActor* User);

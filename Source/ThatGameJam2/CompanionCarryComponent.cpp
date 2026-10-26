@@ -16,16 +16,101 @@ void UCompanionCarryComponent::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (!HoldAttach && GetOwner())
+	AActor* Owner = GetOwner();
+	if (!Owner)
 	{
-		if (UCameraComponent* Camera = GetOwner()->FindComponentByClass<UCameraComponent>())
+		return;
+	}
+
+	if (!HoldAttach)
+	{
+		if (UCameraComponent* Camera = Owner->FindComponentByClass<UCameraComponent>())
 		{
 			HoldAttach = Camera;
 		}
 		else
 		{
-			HoldAttach = GetOwner()->GetRootComponent();
+			HoldAttach = Owner->GetRootComponent();
 		}
+	}
+
+	// Slots filled with level-placed companions follow the player
+	for (ACompanionPawn* Companion : Companions)
+	{
+		if (Companion && !Companion->GetFollowTarget())
+		{
+			Companion->SetFollowTarget(Owner);
+		}
+	}
+
+	// Spawn any starting companions next to the player
+	if (UWorld* World = GetWorld())
+	{
+		for (int32 i = 0; i < StartingCompanionClasses.Num(); ++i)
+		{
+			if (Companions.Num() >= MaxCompanions)
+			{
+				break;
+			}
+			if (!StartingCompanionClasses[i])
+			{
+				continue;
+			}
+
+			FActorSpawnParameters Params;
+			Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+			Params.Owner = Owner;
+
+			const FVector Loc = Owner->GetActorLocation()
+				+ Owner->GetActorForwardVector() * 150.f
+				+ Owner->GetActorRightVector() * (100.f * (Companions.Num() - 1));
+
+			if (ACompanionPawn* Spawned = World->SpawnActor<ACompanionPawn>(StartingCompanionClasses[i], Loc, Owner->GetActorRotation(), Params))
+			{
+				RegisterCompanion(Spawned);
+			}
+		}
+	}
+
+	SelectedIndex = FMath::Clamp(SelectedIndex, 0, FMath::Max(0, Companions.Num() - 1));
+}
+
+bool UCompanionCarryComponent::RegisterCompanion(ACompanionPawn* Companion)
+{
+	if (!Companion || Companions.Contains(Companion) || Companions.Num() >= MaxCompanions)
+	{
+		return false;
+	}
+
+	Companions.Add(Companion);
+	if (GetOwner())
+	{
+		Companion->SetFollowTarget(GetOwner());
+	}
+	return true;
+}
+
+void UCompanionCarryComponent::SelectCompanion(int32 SlotIndex)
+{
+	if (!Companions.IsValidIndex(SlotIndex) || !Companions[SlotIndex])
+	{
+		return;
+	}
+
+	SelectedIndex = SlotIndex;
+	OnSelectedCompanionChanged.Broadcast(SelectedIndex, Companions[SlotIndex]);
+}
+
+ACompanionPawn* UCompanionCarryComponent::GetSelectedCompanion() const
+{
+	return Companions.IsValidIndex(SelectedIndex) ? Companions[SelectedIndex].Get() : nullptr;
+}
+
+void UCompanionCarryComponent::UseSelectedAbility()
+{
+	if (ACompanionPawn* Selected = GetSelectedCompanion())
+	{
+		Selected->UseAbility(GetOwner());
 	}
 }
 
@@ -75,14 +160,6 @@ void UCompanionCarryComponent::ThrowHeld()
 
 	HeldCompanion->Throw(Velocity);
 	HeldCompanion = nullptr;
-}
-
-void UCompanionCarryComponent::UseHeldAbility()
-{
-	if (HeldCompanion)
-	{
-		HeldCompanion->UseAbility(GetOwner());
-	}
 }
 
 ACompanionPawn* UCompanionCarryComponent::FindCompanionToGrab() const
