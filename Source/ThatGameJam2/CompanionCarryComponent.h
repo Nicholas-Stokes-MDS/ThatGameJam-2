@@ -40,6 +40,19 @@ public:
 	UFUNCTION(BlueprintPure, Category = "Companion")
 	int32 GetSelectedIndex() const { return SelectedIndex; }
 
+	// ---- Follow / stay ----
+
+	/** Make the selected companion follow the player (true) or stay where it is (false). */
+	UFUNCTION(BlueprintCallable, Category = "Companion")
+	void SetSelectedCompanionFollowing(bool bFollow);
+
+	UFUNCTION(BlueprintCallable, Category = "Companion")
+	void ToggleSelectedCompanionFollowing();
+
+	/** Same for every companion in the slots. */
+	UFUNCTION(BlueprintCallable, Category = "Companion")
+	void SetAllCompanionsFollowing(bool bFollow);
+
 	// ---- Actions ----
 
 	/** Bind to left click: triggers the selected companion's ability (held or not). */

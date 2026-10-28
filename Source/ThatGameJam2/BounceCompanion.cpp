@@ -1,4 +1,4 @@
-// CrawlerCompanion.cpp
+// BounceCompanion.cpp
 
 #include "BounceCompanion.h"
 #include "Components/SphereComponent.h"
@@ -8,6 +8,7 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Engine/World.h"
 #include "Engine/OverlapResult.h"
+#include "EngineUtils.h"
 
 ABounceCompanion::ABounceCompanion()
 {
@@ -58,7 +59,7 @@ void ABounceCompanion::Tick(float DeltaSeconds)
 	case ECompanionState::Idle:
 		Collision->SetSphereRadius(BaseRadius * CurrentScale);
 		UpdateCrawl(DeltaSeconds);
-		if (bPulsing)
+		if (bPulsing && bSustainedPush)
 		{
 			ApplyPush(DeltaSeconds);
 		}
@@ -113,9 +114,6 @@ void ABounceCompanion::DropUnderHolder(AActor* User)
 
 	const FVector Feet = Character->GetActorLocation() - FVector(0.f, 0.f, Character->GetSimpleCollisionHalfHeight());
 	Drop(Feet + FVector(0.f, 0.f, BaseRadius + 1.f));
-
-	// explode after dropping
-	StartPulse(User);
 }
 
 void ABounceCompanion::StartPulse(AActor* User)
@@ -131,18 +129,16 @@ void ABounceCompanion::StartPulse(AActor* User)
 
 	OnPulseStarted();
 
-	// If the player is close enough, launch them away from the companion
-	ACharacter* Character = Cast<ACharacter>(User);
-	if (!Character)
-	{
-		return;
-	}
+	LaunchPawnsInRange(User);
+}
 
-	const FVector Offset = Character->GetActorLocation() - GetActorLocation();
+bool ABounceCompanion::ComputeLaunchVelocity(const FVector& TargetLoc, FVector& OutVelocity) const
+{
+	const FVector Offset = TargetLoc - GetActorLocation();
 	const float Dist = Offset.Size();
 	if (Dist > PlayerLaunchRange)
 	{
-		return;
+		return false;
 	}
 
 	// Directly above the companion launches straight up; off to the side launches up and away
@@ -153,14 +149,80 @@ void ABounceCompanion::StartPulse(AActor* User)
 	const float Alpha = FMath::GetMappedRangeValueClamped(
 		FVector2D(0.f, PlayerLaunchRange), FVector2D(1.f, LaunchFalloffAtMaxRange), Dist);
 
-	Character->LaunchCharacter(Dir * LaunchStrength * Alpha, bLaunchOverridesXY, /*bZOverride=*/true);
-	OnLaunchedPlayer(Character);
+	OutVelocity = Dir * LaunchStrength * Alpha;
+	return true;
+}
+
+void ABounceCompanion::LaunchPawnsInRange(AActor* User)
+{
+	UWorld* World = GetWorld();
+	const FVector MyLoc = GetActorLocation();
+
+	// Other companions are found directly rather than through a collision query, so one
+	// that is mid-flight (collision responses change while thrown) is never missed.
+	// A flying companion keeps its velocity and the launch is added on top.
+	for (TActorIterator<ACompanionPawn> It(World); It; ++It)
+	{
+		ACompanionPawn* OtherCompanion = *It;
+		if (OtherCompanion == this)
+		{
+			continue;
+		}
+
+		FVector LaunchVelocity;
+		if (ComputeLaunchVelocity(OtherCompanion->GetActorLocation(), LaunchVelocity))
+		{
+			OtherCompanion->LaunchAway(LaunchVelocity);
+		}
+	}
+
+	// Everything else: the player, enemies and any other pawn
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(BounceLaunch), false, this);
+
+	TArray<FOverlapResult> Overlaps;
+	World->OverlapMultiByChannel(Overlaps, MyLoc, FQuat::Identity, ECC_Pawn,
+		FCollisionShape::MakeSphere(PlayerLaunchRange), Params);
+
+	TSet<APawn*> Handled;
+	for (const FOverlapResult& Overlap : Overlaps)
+	{
+		APawn* Other = Cast<APawn>(Overlap.GetActor());
+		if (!Other || Other == this || Other->IsA<ACompanionPawn>() || Handled.Contains(Other))
+		{
+			continue;
+		}
+		Handled.Add(Other);
+
+		FVector LaunchVelocity;
+		if (!ComputeLaunchVelocity(Other->GetActorLocation(), LaunchVelocity))
+		{
+			continue;
+		}
+
+		if (ACharacter* OtherCharacter = Cast<ACharacter>(Other))
+		{
+			OtherCharacter->LaunchCharacter(LaunchVelocity, bLaunchOverridesXY, /*bZOverride=*/true);
+			if (OtherCharacter == User)
+			{
+				OnLaunchedPlayer(OtherCharacter);
+			}
+		}
+		else if (UPrimitiveComponent* RootPrim = Cast<UPrimitiveComponent>(Other->GetRootComponent()))
+		{
+			if (RootPrim->IsSimulatingPhysics())
+			{
+				RootPrim->AddImpulse(LaunchVelocity, NAME_None, /*bVelChange=*/true);
+			}
+		}
+	}
 }
 
 void ABounceCompanion::UpdateCrawl(float DeltaSeconds)
 {
 	AActor* Target = GetFollowTarget();
-	if (Target)
+
+	// When told to stay, skip all movement but still sit on the floor
+	if (IsFollowing() && Target)
 	{
 		const FVector MyLoc = GetActorLocation();
 		FVector ToTarget = Target->GetActorLocation() - MyLoc;
@@ -194,7 +256,7 @@ void ABounceCompanion::SnapToFloor(float DeltaSeconds)
 	const float Radius = Collision->GetScaledSphereRadius();
 	FVector Loc = GetActorLocation();
 
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(CrawlerFloor), false, this);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(BounceFloor), false, this);
 	if (AActor* Target = GetFollowTarget())
 	{
 		Params.AddIgnoredActor(Target);
@@ -225,7 +287,7 @@ void ABounceCompanion::ApplyPush(float DeltaSeconds)
 	const float PushRadius = Collision->GetScaledSphereRadius() + PushRadiusPadding;
 	const FVector MyLoc = GetActorLocation();
 
-	FCollisionQueryParams Params(SCENE_QUERY_STAT(CrawlerPush), false, this);
+	FCollisionQueryParams Params(SCENE_QUERY_STAT(BouncePush), false, this);
 	if (AActor* Target = GetFollowTarget())
 	{
 		Params.AddIgnoredActor(Target); // never shove the player we follow
@@ -260,8 +322,6 @@ void ABounceCompanion::ApplyPush(float DeltaSeconds)
 		}
 		else
 		{
-			// Direct shove. Reliable against character movement friction, and walks
-			// enemies straight off platforms (they fall once the floor is gone).
 			Other->AddActorWorldOffset(Dir * PushSpeed * Alpha * DeltaSeconds, /*bSweep=*/true);
 		}
 	}

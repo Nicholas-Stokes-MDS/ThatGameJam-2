@@ -106,6 +106,33 @@ ACompanionPawn* UCompanionCarryComponent::GetSelectedCompanion() const
 	return Companions.IsValidIndex(SelectedIndex) ? Companions[SelectedIndex].Get() : nullptr;
 }
 
+void UCompanionCarryComponent::SetSelectedCompanionFollowing(bool bFollow)
+{
+	if (ACompanionPawn* Selected = GetSelectedCompanion())
+	{
+		Selected->SetFollowing(bFollow);
+	}
+}
+
+void UCompanionCarryComponent::ToggleSelectedCompanionFollowing()
+{
+	if (ACompanionPawn* Selected = GetSelectedCompanion())
+	{
+		Selected->SetFollowing(!Selected->IsFollowing());
+	}
+}
+
+void UCompanionCarryComponent::SetAllCompanionsFollowing(bool bFollow)
+{
+	for (ACompanionPawn* Companion : Companions)
+	{
+		if (Companion)
+		{
+			Companion->SetFollowing(bFollow);
+		}
+	}
+}
+
 void UCompanionCarryComponent::UseSelectedAbility()
 {
 	if (ACompanionPawn* Selected = GetSelectedCompanion())

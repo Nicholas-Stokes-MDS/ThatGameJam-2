@@ -1,5 +1,6 @@
 // CompanionPawn.h
-// Base class for companion creatures that the player can pick up, throw and trigger an ability on. 
+// Base class for companion creatures that the player can pick up, throw and
+// trigger an ability on.
 
 #pragma once
 
@@ -44,11 +45,20 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Companion")
 	void Throw(FVector Velocity);
 
+	/**
+	 * Knock the companion into the air with the given velocity (cm/s), e.g. from another
+	 * companion's pulse. It flies with physics and settles like a thrown companion.
+	 * If it is already flying, the launch is ADDED to its current velocity.
+	 * Ignored while held.
+	 */
+	UFUNCTION(BlueprintCallable, Category = "Companion")
+	void LaunchAway(FVector Velocity);
+
 	/** Detach from the holder and place at a world location, standing on its own (Idle). */
 	UFUNCTION(BlueprintCallable, Category = "Companion")
 	void Drop(FVector WorldLocation);
 
-	/** Triggered by right click when not held. Override in children (C++ or Blueprint). */
+	/** Triggered by left click. Override in children (C++ or Blueprint). */
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Companion")
 	void UseAbility(AActor* User);
 	virtual void UseAbility_Implementation(AActor* User);
@@ -70,6 +80,16 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Companion")
 	void SetFollowTarget(AActor* NewTarget) { FollowTarget = NewTarget; }
+
+	/** true: follows the follow target when idle. false: stays where it is. */
+	UFUNCTION(BlueprintCallable, Category = "Companion")
+	void SetFollowing(bool bShouldFollow) { bFollowing = bShouldFollow; }
+
+	UFUNCTION(BlueprintCallable, Category = "Companion")
+	void ToggleFollowing() { bFollowing = !bFollowing; }
+
+	UFUNCTION(BlueprintPure, Category = "Companion")
+	bool IsFollowing() const { return bFollowing; }
 
 	UPROPERTY(BlueprintAssignable, Category = "Companion")
 	FCompanionStateChanged OnCompanionStateChanged;
@@ -109,6 +129,10 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Companion")
 	TObjectPtr<AActor> FollowTarget;
+
+	/** Whether the companion follows its target when idle (see SetFollowing). */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Companion")
+	bool bFollowing = true;
 
 	/** Seconds after a throw during which the companion ignores pawns (so it doesn't hit the thrower). */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Companion|Throw")

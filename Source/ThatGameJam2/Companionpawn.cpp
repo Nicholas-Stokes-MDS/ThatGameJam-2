@@ -91,6 +91,29 @@ void ACompanionPawn::Throw(FVector Velocity)
 	GetWorldTimerManager().SetTimer(PawnCollisionTimer, this, &ACompanionPawn::RestorePawnCollision, ThrowIgnorePawnTime, false);
 }
 
+void ACompanionPawn::LaunchAway(FVector Velocity)
+{
+	if (State == ECompanionState::Held)
+	{
+		return; // Held companions go wherever the carrier goes
+	}
+
+	ThrownTime = 0.f;
+
+	if (State == ECompanionState::Idle)
+	{
+		SetState(ECompanionState::Thrown); // Sets up physics collision
+		Collision->SetSimulatePhysics(true);
+		GetWorldTimerManager().SetTimer(PawnCollisionTimer, this, &ACompanionPawn::RestorePawnCollision, ThrowIgnorePawnTime, false);
+		Collision->SetPhysicsLinearVelocity(Velocity);
+	}
+	else
+	{
+		// Already flying: keep the current velocity and add the launch on top
+		Collision->AddImpulse(Velocity, NAME_None, /*bVelChange=*/true);
+	}
+}
+
 void ACompanionPawn::Drop(FVector WorldLocation)
 {
 	if (State != ECompanionState::Held)
